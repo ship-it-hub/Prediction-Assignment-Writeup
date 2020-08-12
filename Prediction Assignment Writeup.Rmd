@@ -1,0 +1,136 @@
+---
+title: "Prediction Assignment Writeup"
+author: "Vitalii"
+date: "12/08/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Overview
+
+One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants.
+
+The goal of this project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set.
+
+The data for this project come from this source: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har.
+
+# Loading and preprocessing the data
+
+Download all the necessary packages for further work.
+
+```{r}
+library(caret)
+library(e1071)
+```
+
+Now let's move on to downloading the dataset.
+
+```{r}
+trainUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testUrl  <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+trainFile <- "pml-traininig.csv"
+testFile <- "pml-testing.csv"
+
+# download the datasets
+if(!file.exists(trainFile)) {
+        download.file(trainUrl, destfile = trainFile)
+        }
+
+train <- read.csv(trainFile)
+
+if(!file.exists(testFile)) {
+        download.file(testUrl, destfile = testFile)
+        }
+
+test <- read.csv(testFile)
+```
+
+The data set is cleared of identification variables, variables with low variation and variables with many omitted values.
+
+```{r}
+# remove identification variables
+train <- train[, -(1:5)]
+train$classe <- as.factor(train$classe)
+
+# create a partition using caret with the training dataset
+inTrain  <- createDataPartition(train$classe, p = 0.7, list = FALSE)
+trainSet <- train[inTrain, ]
+testSet <- train[-inTrain, ]
+dim(trainSet)
+```
+
+```{r}
+dim(testSet)
+```
+
+```{r}
+# remove variables with Nearly Zero Variance
+NZV <- nearZeroVar(trainSet)
+trainSet <- trainSet[, -NZV]
+testSet  <- testSet[, -NZV]
+dim(trainSet)
+```
+
+```{r}
+dim(testSet)
+```
+
+```{r}
+# remove variables that are mostly NA
+allNA    <- sapply(trainSet, function(x) mean(is.na(x))) > 0.95
+trainSet <- trainSet[, allNA == FALSE]
+testSet  <- testSet[, allNA == FALSE]
+dim(trainSet)
+```
+
+```{r}
+dim(testSet)
+```
+
+Make the plot of distribution of classes.
+
+```{r}
+plot(trainSet$classe, 
+     main = "Frequency of different levels", 
+     xlab = "classe", ylab = "Frequency")
+```
+
+Based on the frequency distribution, it shows that each level frequency is within the same order of magnitude of each other. Level A is the most frequent, and level D is the least frequent.
+
+# Predictive modelling
+
+The model of Random Forest was chosen for predictive modelling, because according to the literature, this approach has proven to be the best. On the other hand, this approach is quite time consuming during training.
+
+```{r}
+controlRF <- trainControl(method = "cv", number = 3, verboseIter = FALSE)
+RF_model <- train(classe ~ .,
+                  data = trainSet,
+                  method = "rf",
+                  trControl = controlRF)
+
+RF_model$finalModel
+```
+
+```{r}
+predictRF <- predict(RF_model, newdata = testSet)
+confMatRF <- confusionMatrix(predictRF, testSet$classe)
+confMatRF
+```
+
+A Confusion Matrix is plotted to better visualize the accuracy of the model.
+
+```{r}
+plot(confMatRF$table, col = confMatRF$byClass, 
+     main = paste("Random Forest Model - Accuracy =",
+                  round(confMatRF$overall['Accuracy'], 4)))
+```
+
+The accuracy of Random Forest is 99.64, which is quite sufficient for further predicting. The Random Forest model will be applied to predict the 20 quiz results.
+
+```{r}
+predictTEST <- predict(RF_model, newdata = test)
+predictTEST
+```
